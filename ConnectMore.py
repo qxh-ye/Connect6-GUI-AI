@@ -34,6 +34,27 @@ class PlaceStoneStatus:
     ImpossibleMove = -2
     FullBoard = 2
 
+def to_display_coord(x, y):
+    """
+    将内部棋盘坐标转换为比赛报点坐标。
+    内部 x 是行，y 是列；显示时列用 A-S，行用 1-19。
+    """
+    if not Move.isValidPosition(x, y):
+        raise ValueError('Invalid board coordinate: ({0}, {1})'.format(x, y));
+    return chr(ord('A') + y) + str(x + 1);
+
+def move_to_display_text(move):
+    """
+    普通两颗棋返回：J10、K10；第一手两个坐标相同则返回：J10。
+    """
+    if move is None or not move.isValidated():
+        return '';
+    first = to_display_coord(move.x1, move.y1);
+    second = to_display_coord(move.x2, move.y2);
+    if move.x1 == move.x2 and move.y1 == move.y2:
+        return first;
+    return first + '、' + second;
+
 class App(Frame):
     
 
@@ -61,6 +82,11 @@ class App(Frame):
         
         #Timeout de motor
         self.timeout = 30
+        self.moveList = [];
+        self.times = [];
+        self.currentMoveText = '';
+        self.lastMoveText = '';
+        self.hoverCoordText = '';
 
         self.initResource();
 
@@ -127,82 +153,93 @@ class App(Frame):
         self.showDisplayMsg = True
 
         # Widgets
-        self.canvas = Canvas(self, width=640, height=640);
+        self.canvas = Canvas(self, width=680, height=680, borderwidth=0, highlightthickness=0);
         self.canvas.pack(side=LEFT, fill=BOTH, expand=1);
         # Button widgets
         self.controlFrame = LabelFrame(self);
         self.controlFrame.pack(fill=BOTH, expand=1);
         
-        self.controlFrame.aiLevel = labelframe = LabelFrame(self.controlFrame, text='AI Level');
+        self.controlFrame.aiLevel = labelframe = LabelFrame(self.controlFrame, text='AI 难度');
         labelframe.pack(fill=X, expand=1);
         self.aiLevel = IntVar();
         #print(self.aiLevel.get());
-        labelframe.lowRBtn = Radiobutton(labelframe, text="Low", variable=self.aiLevel, value=4);
+        labelframe.lowRBtn = Radiobutton(labelframe, text="低", variable=self.aiLevel, value=4);
         labelframe.lowRBtn.select();
         labelframe.lowRBtn.pack( anchor = W );
-        labelframe.mediumRBtn = Radiobutton(labelframe, text="Medium", variable=self.aiLevel, value=5);
+        labelframe.mediumRBtn = Radiobutton(labelframe, text="中", variable=self.aiLevel, value=5);
         labelframe.mediumRBtn.pack( anchor = W )
-        labelframe.highRBtn = Radiobutton(labelframe, text="High", variable=self.aiLevel, value=6);
+        labelframe.highRBtn = Radiobutton(labelframe, text="高", variable=self.aiLevel, value=6);
         labelframe.highRBtn.pack( anchor = W );
         self.vcf = IntVar();
-        chbox = Checkbutton(labelframe, text = "With VCF", variable = self.vcf, );
+        chbox = Checkbutton(labelframe, text = "启用 VCF", variable = self.vcf, );
         chbox.select();
         chbox.pack(anchor = W );
         # print(self.vcf.get());
 
-        self.controlFrame.selectBlack = labelframe = LabelFrame(self.controlFrame, text='Black Player');
+        self.controlFrame.selectBlack = labelframe = LabelFrame(self.controlFrame, text='黑方玩家');
         labelframe.pack(fill=X, expand=1);
         labelframe.blackImg = Label(labelframe, image=self.images['go_b']);
         labelframe.blackImg.pack(side=LEFT, anchor = W);
 
         self.blackOption = IntVar();
-        labelframe.humanRBtn = Radiobutton(labelframe, text="Human", value=0, variable=self.blackOption, command=self.setBlackHuman);
+        labelframe.humanRBtn = Radiobutton(labelframe, text="人类", value=0, variable=self.blackOption, command=self.setBlackHuman);
         labelframe.humanRBtn.select();
         labelframe.humanRBtn.pack( anchor = W );
         labelframe.engineRBtn = Radiobutton(labelframe, text="AI", value=1, variable=self.blackOption, command=self.setBlackBot);
         labelframe.engineRBtn.pack( anchor = W );
         
-        self.controlFrame.selectWhite = labelframe = LabelFrame(self.controlFrame, text='White Player');
+        self.controlFrame.selectWhite = labelframe = LabelFrame(self.controlFrame, text='白方玩家');
         labelframe.pack(fill=X, expand=1);
         labelframe.whiteImg = Label(labelframe, image=self.images['go_w']);
         labelframe.whiteImg.pack(side=LEFT, anchor = W);
 
         self.whiteOption = IntVar();
-        labelframe.humanRBtn = Radiobutton(labelframe, text="Human", value=0, variable=self.whiteOption, command=self.setWhiteHuman);
+        labelframe.humanRBtn = Radiobutton(labelframe, text="人类", value=0, variable=self.whiteOption, command=self.setWhiteHuman);
         labelframe.humanRBtn.select();
         labelframe.humanRBtn.pack( anchor = W );
         labelframe.engineRBtn = Radiobutton(labelframe, text="AI", value=1, variable=self.whiteOption,command=self.setWhiteBot);
         labelframe.engineRBtn.pack( anchor = W );
         
-        self.controlFrame.gameContral = labelframe = LabelFrame(self.controlFrame, text='Game Control');
+        self.controlFrame.gameContral = labelframe = LabelFrame(self.controlFrame, text='游戏控制');
         labelframe.pack(fill=X, expand=1);
-        labelframe.newBtn = Button(labelframe, text='Start Game', command=self.newSingleGame);
+        labelframe.newBtn = Button(labelframe, text='开始游戏', command=self.newSingleGame);
         labelframe.newBtn.pack(side=TOP, fill=X);
-        labelframe.backBtn = Button(labelframe, text='Back Move', command=self.backMove);
+        labelframe.backBtn = Button(labelframe, text='悔棋', command=self.backMove);
         labelframe.backBtn.pack(fill=X);
         #Load engines
-        labelframe.loadBtn = Button(labelframe, text='Load Black Engine', command=self.loadGameEngineBlack);
+        labelframe.loadBtn = Button(labelframe, text='加载黑方引擎', command=self.loadGameEngineBlack);
         labelframe.loadBtn.pack(fill=BOTH);
-        labelframe.loadBtn2 = Button(labelframe, text='Load White Engine', command=self.loadGameEngineWhite);
+        labelframe.loadBtn2 = Button(labelframe, text='加载白方引擎', command=self.loadGameEngineWhite);
         labelframe.loadBtn2.pack(fill=BOTH);
-        labelframe.quitBtn = Button(labelframe, text='Quit Game', command=self.master.destroy);
+        labelframe.quitBtn = Button(labelframe, text='退出游戏', command=self.master.destroy);
         labelframe.quitBtn.pack(fill=X);
         
-        self.controlFrame.tournament = labelframe = LabelFrame(self.controlFrame, text='Tournament');
+        self.controlFrame.tournament = labelframe = LabelFrame(self.controlFrame, text='锦标赛');
         labelframe.pack(fill=X, expand=1);
-        labelframe.loadBtn = Button(labelframe, text='Load Tournament', command=self.loadTournament);
+        labelframe.loadBtn = Button(labelframe, text='加载赛事配置', command=self.loadTournament);
         labelframe.loadBtn.pack(side=TOP, fill=X);
-        labelframe.newBtn = Button(labelframe, text='Start Games', command=self.startTournamentGames);
+        labelframe.newBtn = Button(labelframe, text='开始比赛', command=self.startTournamentGames);
         labelframe.newBtn.pack(side=TOP, fill=X);
-        labelframe.newBtn = Button(labelframe, text='Save results', command=self.saveTournamentGames);
+        labelframe.newBtn = Button(labelframe, text='保存结果', command=self.saveTournamentGames);
         labelframe.newBtn.pack(side=TOP, fill=X);
+
+        self.controlFrame.moveInfo = labelframe = LabelFrame(self.controlFrame, text='比赛报点');
+        labelframe.pack(fill=X, expand=1);
+        labelframe.turn = Label(labelframe, text='当前轮到：-');
+        labelframe.turn.pack(side=TOP, anchor = W);
+        labelframe.currentMove = Label(labelframe, text='本回合落子：-');
+        labelframe.currentMove.pack(side=TOP, anchor = W);
+        labelframe.lastMove = Label(labelframe, text='上一步落子：-');
+        labelframe.lastMove.pack(side=TOP, anchor = W);
+        labelframe.hoverCoord = Label(labelframe, text='鼠标位置：-');
+        labelframe.hoverCoord.pack(side=TOP, anchor = W);
         
 
-        self.controlFrame.aiStatus = labelframe = LabelFrame(self.controlFrame, text='AI Status');
+        self.controlFrame.aiStatus = labelframe = LabelFrame(self.controlFrame, text='AI 状态');
         labelframe.pack(side=BOTTOM, fill=BOTH, expand="yes");
-        labelframe.nameBlack = Label(labelframe, text='AI B Name');
+        labelframe.nameBlack = Label(labelframe, text='黑方 AI 名称');
         labelframe.nameBlack.pack(side=TOP, anchor = W);
-        labelframe.nameWhite = Label(labelframe, text='AI W Name');
+        labelframe.nameWhite = Label(labelframe, text='白方 AI 名称');
         labelframe.nameWhite.pack(side=TOP, anchor = W);
         labelframe.image = Label(labelframe, image=self.images['smile']);
         labelframe.image.pack(side=TOP, anchor = W);
@@ -237,7 +274,7 @@ class App(Frame):
         return vcf;
         
     def loadTournament(self):
-        path = filedialog.askopenfilename(title='Load tournament file ', initialdir='tournaments');
+        path = filedialog.askopenfilename(title='加载赛事配置文件', initialdir='tournaments');
         print('Loading tournament file:', path);
         if len(path) > 0:
             try:
@@ -245,11 +282,11 @@ class App(Frame):
                 self.tournament.load_from_file(path)
                 print('Tournament loaded with ' + str(len(self.tournament.players)) + ' players')
             except Exception as e:
-                messagebox.showinfo("Error","Error to generate tournament from: " + path + ",\n errors: " + str(e));
+                messagebox.showinfo("错误","无法从文件生成赛事配置: " + path + ",\n错误: " + str(e));
                 self.tournament = Tournament()
                 
     def saveTournamentGames(self):
-        f = filedialog.asksaveasfile(mode='w', defaultextension=".txt", title='Save tournament file ', initialdir='tournaments');
+        f = filedialog.asksaveasfile(mode='w', defaultextension=".txt", title='保存赛事结果文件', initialdir='tournaments');
         if f is None: # asksaveasfile return `None` if dialog closed with "cancel".
             return
             
@@ -259,7 +296,7 @@ class App(Frame):
             f.close()
             print('Tournament results saved');
         except Exception as e:
-            messagebox.showinfo("Error","Error to save tournament. \n errors: " + str(e));
+            messagebox.showinfo("错误","保存赛事结果失败。\n错误: " + str(e));
     
     #Gnerate games from tournament            
     def startTournamentGames(self):
@@ -277,32 +314,32 @@ class App(Frame):
         
 
     def loadGameEngineBlack(self):
-        self.botPlayerBlack.path = filedialog.askopenfilename(title='Load executable file for new game engine black ', initialdir='engines');
+        self.botPlayerBlack.path = filedialog.askopenfilename(title='加载黑方引擎可执行文件', initialdir='engines');
         print('Load game engine black:', self.botPlayerBlack.path);
         if self.botPlayerBlack.has_correct_name():
             try:
                 self.initGameEngine(self.botPlayerBlack, Move.BLACK);
                 self.botPlayerBlack.release();
             except Exception as e:
-                messagebox.showinfo("Error","Error to load the engine: " + self.botPlayerBlack.path + ",\n errors: " + str(e));
+                messagebox.showinfo("错误","加载引擎失败: " + self.botPlayerBlack.path + ",\n错误: " + str(e));
                 self.botPlayerBlack.path = None
                 
     def loadGameEngineWhite(self):
-        self.botPlayerWhite.path = filedialog.askopenfilename(title='Load executable file for new game engine white ', initialdir='engines');
+        self.botPlayerWhite.path = filedialog.askopenfilename(title='加载白方引擎可执行文件', initialdir='engines');
         print('Load game engine white:', self.botPlayerWhite.path);
         if self.botPlayerWhite.has_correct_name():
             try:
                 self.initGameEngine(self.botPlayerWhite, Move.WHITE);
                 self.botPlayerWhite.release();
             except Exception as e:
-                messagebox.showinfo("Error","Error to load the engine: " + self.botPlayerWhite.path + ",\n errors: " + str(e));
+                messagebox.showinfo("错误","加载引擎失败: " + self.botPlayerWhite.path + ",\n错误: " + str(e));
                 self.botPlayerWhite.path = None
 
     def initGameEngine(self, bot, move):
         bot.init_engine(self.aiLevel.get(), self.isVcf(), move);
         # Change the engine name
         shortName = bot.get_short_name().capitalize();
-        self.controlFrame.aiLevel['text'] = 'AI Level';
+        self.controlFrame.aiLevel['text'] = 'AI 难度';
         
         name = bot.get_name().capitalize();
         
@@ -315,15 +352,30 @@ class App(Frame):
         #root.title('Cloudict.Connect6 - ' + name);
 
     def createBoardUnit(self, x, y, imageKey):
-        lb = Label(self.canvas, height=32, width=32);
+        lb = Label(self.canvas, height=32, width=32, borderwidth=0, highlightthickness=0, padx=0, pady=0);
         lb.x = x;
         lb.y = y;
         lb['image'] = self.images[imageKey];
         lb.initImage = self.images[imageKey];
         lb.bind('<Button-1>', self.onClickBoard);
+        lb.bind('<Enter>', self.onEnterBoard);
+        lb.bind('<Leave>', self.onLeaveBoard);
         self.gameBoard[x][y] = lb;
 
         return lb;
+
+    def createBoardCoordinates(self):
+        corner = Label(self.canvas, text='', width=3, height=1, borderwidth=0, highlightthickness=0);
+        corner.grid(row=0, column=0, sticky=NSEW);
+        for y in range(Move.EDGE):
+            label = Label(self.canvas, text=chr(ord('A') + y), width=1, height=1, borderwidth=0, highlightthickness=0);
+            label.grid(row=0, column=y+1, sticky=NSEW);
+        for x in range(Move.EDGE):
+            label = Label(self.canvas, text=str(x+1), width=3, height=1, borderwidth=0, highlightthickness=0);
+            label.grid(row=x+1, column=0, sticky=NSEW);
+        for i in range(1, Move.EDGE+1):
+            self.canvas.rowconfigure(i, minsize=32, weight=0, pad=0);
+            self.canvas.columnconfigure(i, minsize=32, weight=0, pad=0);
 
     def createBoard(self):
         self.gameBoard = [ [ 0 for i in range(Move.EDGE) ] for i in range(Move.EDGE)];
@@ -331,6 +383,7 @@ class App(Frame):
         images = self.images;
         gameBoard = self.gameBoard;
         canvas = self.canvas;
+        self.createBoardCoordinates();
         # Upper
         self.createBoardUnit(0, 0, 'go_ul');
         for j in range(1, 18):
@@ -374,21 +427,27 @@ class App(Frame):
                     self.unmakeTopMove();
             elif self.gameState == GameState.WaitForHumanSecond:
                 self.unplaceColor(self.move.x1, self.move.y1);
+                self.currentMoveText = '';
                 self.toGameState(GameState.WaitForHumanFirst);
+                self.refreshMoveInfo();
 
     def initBoard(self):
         self.moveList = [];
         self.times = []
+        self.currentMoveText = '';
+        self.lastMoveText = '';
+        self.hoverCoordText = '';
         for i in range(Move.EDGE):
             for j in range(Move.EDGE):
                 self.unplaceColor(i, j);
         self.remainingMoves = 19*19
+        self.refreshMoveInfo();
 
     def unplaceColor(self, i, j):
         gameBoard = self.gameBoard;
         gameBoard[i][j]['image'] = gameBoard[i][j].initImage;
         gameBoard[i][j].color = 0;
-        gameBoard[i][j].grid(row=i, column=j);
+        gameBoard[i][j].grid(row=i+1, column=j+1, sticky=NSEW, padx=0, pady=0, ipadx=0, ipady=0);
 
     def connectedByDirection(self, x, y, dx, dy):
         gameBoard = self.gameBoard;
@@ -495,13 +554,13 @@ class App(Frame):
                         self.feedback = str(e)
                         self.error = e
                         if self.showDisplayMsg:
-                            messagebox.showinfo("White Win", "White Win by Black exception ;)")
+                            messagebox.showinfo("白方获胜", "黑方异常，白方获胜。")
                     else:
                         self.winner = Move.BLACK
                         self.feedback = str(e)
                         self.error = e
                         if self.showDisplayMsg:
-                            messagebox.showinfo("Black Win", "Black Win by Black exception ;)")
+                            messagebox.showinfo("黑方获胜", "白方异常，黑方获胜。")
                             
                 self.toGameState(GameState.Win);
                     
@@ -517,16 +576,16 @@ class App(Frame):
         self.controlFrame.aiStatus.image['image'] = image;
         self.controlFrame.aiStatus.info['text'] = '';
 
-        msg = 'Press start to game.';
+        msg = '请点击开始游戏。';
         
         #Game finished
         if self.gameState == GameState.Win or self.gameState == GameState.Draw:
             if self.winner == Move.BLACK:
-                msg = 'Black Wins!';
+                msg = '黑方获胜！';
             elif self.winner == Move.WHITE:
-                msg = 'White Wins!';
+                msg = '白方获胜！';
             else:
-                msg = "Draw!"
+                msg = "平局！"
             
             #Copy moves and result
             self.currentGame.moves = self.moveList
@@ -546,9 +605,9 @@ class App(Frame):
                 sleep(1.0)
             
         elif self.gameState == GameState.WaitForHumanFirst:
-            msg = 'Move the first...';
+            msg = '请先落子……';
         elif self.gameState == GameState.WaitForHumanSecond:
-            msg = 'Move the second...';
+            msg = '请落第二颗子……';
         elif self.gameState == GameState.WaitForEngine:
             # Check format: Searching 31/37
             currentEngine = None
@@ -557,7 +616,7 @@ class App(Frame):
             else:
                 currentEngine = self.currentGame.white.engine;
                 
-            msg = currentEngine.name+' Thinking.';
+            msg = currentEngine.name+' 正在思考。';
             
             if currentEngine.msg.startswith('Searching '):
                 s = currentEngine.msg.split(' ')[1];
@@ -565,6 +624,7 @@ class App(Frame):
                 cnt = float(ls[0])/float(ls[1]) * 15;
                 msg += '.' * int(cnt);
         self.controlFrame.aiStatus.info['text'] = msg;
+        self.refreshMoveInfo();
 
             
     def otherColor(self, color):
@@ -598,10 +658,12 @@ class App(Frame):
         
         b_ready, w_ready = self.currentGame.is_ready()
         if(not b_ready):
-            messagebox.showinfo("Error","Black engine is not ready");
+            messagebox.showinfo("错误","黑方引擎尚未就绪");
+            self.refreshMoveInfo();
             return
         elif (not w_ready):
-            messagebox.showinfo("Error","White engine is not ready");
+            messagebox.showinfo("错误","白方引擎尚未就绪");
+            self.refreshMoveInfo();
             return
             
         #Prepare players
@@ -622,6 +684,9 @@ class App(Frame):
             self.placeColor(m.color, m.x2, m.y2);
             
         self.moveList.append(move);
+        self.currentMoveText = move_to_display_text(move);
+        self.lastMoveText = self.currentMoveText;
+        self.refreshMoveInfo();
 
     def unmakeTopMove(self):
         if len(self.moveList) > 0:
@@ -633,6 +698,12 @@ class App(Frame):
                 m = self.moveList[-1];
                 self.placeColor(m.color, m.x1, m.y1, 't');
                 self.placeColor(m.color, m.x2, m.y2, 't');
+            self.currentMoveText = '';
+            if len(self.moveList) > 0:
+                self.lastMoveText = move_to_display_text(self.moveList[-1]);
+            else:
+                self.lastMoveText = '';
+            self.refreshMoveInfo();
 
     def makeMove(self, move):
         if(self.gameState != GameState.Win and self.gameState != GameState.Draw):
@@ -677,10 +748,10 @@ class App(Frame):
             self.toGameState(GameState.Win)
             if color == Move.BLACK:
                 if self.showDisplayMsg:
-                    messagebox.showinfo("Black Win", "Black Win ;) Impressive!")
+                    messagebox.showinfo("黑方获胜", "黑方获胜！")
             else:
                 if self.showDisplayMsg:
-                    messagebox.showinfo("White Win", "White Win ;) Impressive!")
+                    messagebox.showinfo("白方获胜", "白方获胜！")
             return False, PlaceStoneStatus.Connect6
              
         self.remainingMoves = self.remainingMoves-1;   
@@ -690,7 +761,7 @@ class App(Frame):
             self.error = None
             self.toGameState(GameState.Draw);
             if self.showDisplayMsg:
-                messagebox.showinfo("Draw", "Draw ;) Impressive!")
+                messagebox.showinfo("平局", "平局！")
             return False, PlaceStoneStatus.FullBoard
             
         return True, PlaceStoneStatus.Correct
@@ -705,7 +776,7 @@ class App(Frame):
         imageKey += extra;
         self.gameBoard[x][y].color = color;
         self.gameBoard[x][y]['image'] = self.images[imageKey];
-        self.gameBoard[x][y].grid(row=x, column=y);
+        self.gameBoard[x][y].grid(row=x+1, column=y+1, sticky=NSEW, padx=0, pady=0, ipadx=0, ipady=0);
 
     def isNoneStone(self, x, y):
         return self.gameBoard[x][y].color == Move.NONE;
@@ -716,6 +787,34 @@ class App(Frame):
     def toGameState(self, state):
         self.gameState = state;
         self.updateStatus();
+
+    def getTurnDisplayText(self):
+        if not hasattr(self, 'moveList'):
+            return '-';
+        if self.gameState == GameState.Win or self.gameState == GameState.Draw:
+            return '-';
+        color = self.nextColor();
+        if color == Move.BLACK:
+            return '黑方';
+        elif color == Move.WHITE:
+            return '白方';
+        return '-';
+
+    def refreshMoveInfo(self):
+        if not hasattr(self.controlFrame, 'moveInfo'):
+            return;
+        self.controlFrame.moveInfo.turn['text'] = '当前轮到：' + self.getTurnDisplayText();
+        self.controlFrame.moveInfo.currentMove['text'] = '本回合落子：' + (self.currentMoveText if self.currentMoveText else '-');
+        self.controlFrame.moveInfo.lastMove['text'] = '上一步落子：' + (self.lastMoveText if self.lastMoveText else '-');
+        self.controlFrame.moveInfo.hoverCoord['text'] = '鼠标位置：' + (self.hoverCoordText if self.hoverCoordText else '-');
+
+    def onEnterBoard(self, event):
+        self.hoverCoordText = to_display_coord(event.widget.x, event.widget.y);
+        self.refreshMoveInfo();
+
+    def onLeaveBoard(self, event):
+        self.hoverCoordText = '';
+        self.refreshMoveInfo();
 
     def onClickBoard(self, event):
         x = event.widget.x;
@@ -735,6 +834,8 @@ class App(Frame):
             elif self.gameState == GameState.WaitForHumanFirst:
                 self.move = Move(color, x, y);
                 self.placeStone(self.move.color, x, y);
+                self.currentMoveText = to_display_coord(x, y);
+                self.refreshMoveInfo();
                 if(self.gameState != GameState.Win and self.gameState != GameState.Draw):
                     if self.gameState == GameState.WaitForHumanFirst:
                         self.toGameState(GameState.WaitForHumanSecond);
@@ -764,6 +865,8 @@ class App(Frame):
             elif self.gameState == GameState.WaitForHumanFirst:
                 self.move = Move(color, x, y);
                 self.placeStone(self.move.color, x, y);
+                self.currentMoveText = to_display_coord(x, y);
+                self.refreshMoveInfo();
                 if(self.gameState != GameState.Win and self.gameState != GameState.Draw):
                     if self.gameState == GameState.WaitForHumanFirst:
                         self.toGameState(GameState.WaitForHumanSecond);

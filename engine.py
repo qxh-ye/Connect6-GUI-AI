@@ -1,6 +1,7 @@
 from time import *;
 import os;
 import random;
+import struct;
 from subprocess import *;
 from threading import *;
 
@@ -102,13 +103,34 @@ class GameEngine:
                 exit(-1);
         return defaultEngineFile;'''
         
+    def validateExecutableFile(self, fileName):
+        if not isinstance(fileName, str):
+            raise ValueError('Engine file path must be a string: ' + str(type(fileName)));
+        fileName = fileName.strip();
+        if fileName == '':
+            raise ValueError('Engine file path is empty');
+        if not os.path.exists(fileName):
+            raise ValueError('Engine file does not exist: ' + fileName);
+        if os.name == 'nt' and fileName.lower().endswith('.exe'):
+            with open(fileName, 'rb') as f:
+                header = f.read(64);
+                if len(header) < 64 or header[:2] != b'MZ':
+                    raise ValueError('Engine file is not a valid Windows executable: ' + fileName);
+                peOffset = struct.unpack_from('<I', header, 0x3c)[0];
+                f.seek(peOffset);
+                if f.read(4) != b'PE\x00\x00':
+                    raise ValueError('Engine file is damaged or not a valid Windows executable: ' + fileName);
+        return fileName;
+
     def init(self, fileName = None, depth = None, vcf = None):
         self.release();
 
         if fileName != None and fileName.strip() != '':
-            self.fileName = fileName;
+            self.fileName = self.validateExecutableFile(fileName);
         else:
             fileName = self.fileName;
+            self.validateExecutableFile(fileName);
+        fileName = self.fileName;
         #print('init:', self.fileName);
         if os.name == 'nt':
             # Windows NT hide
