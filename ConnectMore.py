@@ -489,6 +489,9 @@ class App(Frame):
 
     def waitForMove(self, currGameEngine):
         color = self.nextColor();
+        # 每次等待某个 engine 时重新计时，避免上一方耗时影响当前方超时判定。
+        start_time = time.perf_counter();
+        self.currentTime = start_time;
         while True:
             # print('waitForMove');
             msg = currGameEngine.waitForNextMsg();
@@ -501,7 +504,7 @@ class App(Frame):
                 
             #Check timeout
             c_time = time.perf_counter()
-            t_delayed = c_time - self.currentTime
+            t_delayed = c_time - start_time
             if t_delayed > self.timeout:
                 raise TimeoutMoveException()
             

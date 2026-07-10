@@ -98,7 +98,8 @@ class GameEngine:
                 defaultEngineFile = 'engines/cloudict.app';
             elif osName == 'Linux':
                 defaultEngineFile = 'engines/cloudict.linux';
-            else:
+            else: 
+            
                 print('Not supported OS');
                 exit(-1);
         return defaultEngineFile;'''
